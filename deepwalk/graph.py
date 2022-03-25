@@ -12,11 +12,17 @@ from glob import glob
 from six.moves import range, zip, zip_longest
 from six import iterkeys
 from collections import defaultdict, Iterable
+from multiprocessing import cpu_count
 import random
 from random import shuffle
 from itertools import product,permutations
 from scipy.io import loadmat
 from scipy.sparse import issparse
+
+from concurrent.futures import ProcessPoolExecutor
+
+from multiprocessing import Pool
+from multiprocessing import cpu_count
 
 logger = logging.getLogger("deepwalk")
 
@@ -50,7 +56,7 @@ class Graph(defaultdict):
   
     t0 = time()
 
-    for v in list(self):
+    for v in self.keys():
       for other in self[v]:
         if v != other:
           self[other].append(v)
@@ -117,7 +123,7 @@ class Graph(defaultdict):
 
   def number_of_nodes(self):
     "Returns the number of nodes in the graph"
-    return self.order()
+    return order()
 
   def random_walk(self, path_length, alpha=0, rand=random.Random(), start=None):
     """ Returns a truncated random walk.
@@ -131,7 +137,7 @@ class Graph(defaultdict):
       path = [start]
     else:
       # Sampling is uniform w.r.t V, and not w.r.t E
-      path = [rand.choice(list(G.keys()))]
+      path = [rand.choice(G.keys())]
 
     while len(path) < path_length:
       cur = path[-1]
@@ -142,7 +148,7 @@ class Graph(defaultdict):
           path.append(path[0])
       else:
         break
-    return [str(node) for node in path]
+    return path
 
 # TODO add build_walks in here
 
@@ -151,7 +157,8 @@ def build_deepwalk_corpus(G, num_paths, path_length, alpha=0,
   walks = []
 
   nodes = list(G.nodes())
-  
+  print (nodes)
+
   for cnt in range(num_paths):
     rand.shuffle(nodes)
     for node in nodes:
@@ -211,12 +218,13 @@ def load_adjacencylist(file_, undirected=False, chunksize=10000, unchecked=True)
   adjlist = []
 
   t0 = time()
-  
-  total = 0 
+
   with open(file_) as f:
-    for idx, adj_chunk in enumerate(map(parse_func, grouper(int(chunksize), f))):
-      adjlist.extend(adj_chunk)
-      total += len(adj_chunk)
+    with ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+      total = 0 
+      for idx, adj_chunk in enumerate(executor.map(parse_func, grouper(int(chunksize), f))):
+          adjlist.extend(adj_chunk)
+          total += len(adj_chunk)
   
   t1 = time()
 
@@ -262,7 +270,7 @@ def load_matfile(file_, variable_name="network", undirected=True):
 def from_networkx(G_input, undirected=True):
     G = Graph()
 
-    for idx, x in enumerate(G_input.nodes()):
+    for idx, x in enumerate(G_input.nodes_iter()):
         for y in iterkeys(G_input[x]):
             G[x].append(y)
 
